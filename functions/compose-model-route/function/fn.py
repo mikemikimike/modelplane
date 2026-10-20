@@ -368,6 +368,20 @@ class Composer:
             return False
         gw = igv1alpha1.InferenceGateway.model_validate(gateways[0])
 
+        gateway_conditions = gw.status.conditions if gw.status else None
+        gateway_ready = next(
+            (condition for condition in gateway_conditions or [] if condition.type == "GatewayReady"),
+            None,
+        )
+        if not gateway_ready or gateway_ready.status != "True":
+            message = (
+                gateway_ready.message
+                if gateway_ready and gateway_ready.message
+                else f"InferenceGateway {self.xr.spec.gatewayName} is not ready"
+            )
+            self.not_ready(CONDITION_REASON_WAITING_FOR_GATEWAY, message)
+            return False
+
         if not (gw.status and gw.status.clientCACertificate):
             self.not_ready(
                 CONDITION_REASON_WAITING_FOR_GATEWAY,
