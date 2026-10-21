@@ -255,7 +255,6 @@ def _envoy_proxy() -> fnv1.Resource:
                                     "kubernetes": {
                                         "envoyService": {"externalTrafficPolicy": "Cluster"},
                                         "envoyDeployment": {
-                                            "name": "modelplane-inference-gateway-envoy",
                                             "replicas": 2,
                                             "patch": {
                                                 "type": "StrategicMerge",
@@ -359,6 +358,7 @@ def _envoy_deployment() -> fnv1.Resource:
                 "metadata": {"namespace": "modelplane-system"},
                 "spec": {
                     "providerConfigRef": {"kind": "ClusterProviderConfig", "name": "gw-eu-cluster-kubeconfig"},
+                    "watch": True,
                     "readiness": {
                         "policy": "DeriveFromCelQuery",
                         "celQuery": (
@@ -368,6 +368,8 @@ def _envoy_deployment() -> fnv1.Resource:
                             "object.status.observedGeneration >= object.metadata.generation && "
                             "has(object.status.updatedReplicas) && "
                             "object.status.updatedReplicas == object.spec.replicas && "
+                            "has(object.status.replicas) && "
+                            "object.status.replicas == object.spec.replicas && "
                             "has(object.status.readyReplicas) && "
                             "object.status.readyReplicas == object.spec.replicas && "
                             "has(object.status.availableReplicas) && "
@@ -382,7 +384,7 @@ def _envoy_deployment() -> fnv1.Resource:
                             "apiVersion": "apps/v1",
                             "kind": "Deployment",
                             "metadata": {
-                                "name": "modelplane-inference-gateway-envoy",
+                                "name": "modelplane-system-inference-gateway-5dbfd6c0",
                                 "namespace": "envoy-gateway-system",
                             },
                         }

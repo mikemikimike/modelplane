@@ -451,9 +451,10 @@ def _client_certificate() -> fnv1.Resource:
     )
 
 
-def _ai_gateway_route(*, section_name: str, backend_refs: list[dict]) -> fnv1.Resource:
+def _ai_gateway_route(*, section_name: str, backend_refs: list[dict], ready: fnv1.Ready) -> fnv1.Resource:
     """The composed AIGatewayRoute matching ml-team/assistant, bound to the gateway's section_name listener."""
     return fnv1.Resource(
+        ready=ready,
         resource=resource.dict_to_struct(
             {
                 "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
@@ -518,7 +519,7 @@ def _ai_gateway_route(*, section_name: str, backend_refs: list[dict]) -> fnv1.Re
                     },
                 },
             }
-        )
+        ),
     )
 
 
@@ -947,6 +948,7 @@ COMPOSE_CASES = [
                     "cluster-ca-gw-eu": _cluster_ca(),
                     "client-certificate": _client_certificate(),
                     "route": _ai_gateway_route(
+                        ready=fnv1.READY_UNSPECIFIED,
                         section_name="http",
                         backend_refs=[
                             {"name": "assistant-eu-self-a42e6", "weight": 1, "priority": 0, "modelNameOverride": "d"},
@@ -1033,6 +1035,7 @@ COMPOSE_CASES = [
                     "cluster-ca-gw-eu": _cluster_ca(),
                     "client-certificate": _client_certificate(),
                     "route": _ai_gateway_route(
+                        ready=fnv1.READY_UNSPECIFIED,
                         section_name="http",
                         backend_refs=[{"name": "assistant-eu-self-a42e6", "weight": 1, "priority": 0}],
                     ),
@@ -1062,6 +1065,93 @@ COMPOSE_CASES = [
                     status=fnv1.STATUS_CONDITION_FALSE,
                     reason="WaitingForRoute",
                     message="Waiting for the route on gateway eu to be accepted",
+                )
+            ],
+        ),
+    ),
+    Case(
+        name="GatewayRollout",
+        reason="With an existing route, an unready gateway keeps the route desired and reports it not ready.",
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_model_route(
+                    endpoints=[
+                        v1alpha1.Endpoint(
+                            name="d",
+                            selector=v1alpha1.Selector(matchLabels={"modelplane.ai/deployment": "d"}),
+                        )
+                    ]
+                ),
+                resources={
+                    "route": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "status": {
+                                    "conditions": [
+                                        {
+                                            "type": "Ready",
+                                            "status": "True",
+                                            "reason": "Accepted",
+                                            "lastTransitionTime": "2026-06-08T00:00:00Z",
+                                        }
+                                    ]
+                                }
+                            }
+                        ),
+                        ready=fnv1.READY_TRUE,
+                    )
+                },
+            ),
+            required_resources={
+                "gateway": fnv1.Resources(
+                    items=[
+                        _inference_gateway(
+                            tls=False, address="203.0.113.1", client_ca_published=True, gateway_ready=False
+                        )
+                    ]
+                ),
+                "clusters": fnv1.Resources(items=[_cluster(gateway_ca_published=True)]),
+                "endpoints-d": fnv1.Resources(items=[_composed_endpoint(model=None)]),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_model_route(address="203.0.113.1", total_endpoints=1, ready_endpoints=1),
+                resources={
+                    "backend-self": _composed_endpoint_backend(),
+                    "aibackend-self": _composed_endpoint_ai_backend(),
+                    "cluster-ca-gw-eu": _cluster_ca(),
+                    "client-certificate": _client_certificate(),
+                    "route": _ai_gateway_route(
+                        ready=fnv1.READY_TRUE,
+                        section_name="http",
+                        backend_refs=[{"name": "assistant-eu-self-a42e6", "weight": 1, "priority": 0}],
+                    ),
+                },
+            ),
+            results=[fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Waiting for Envoy Deployment rollout")],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateway": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1", kind="InferenceGateway", match_name="eu"
+                    ),
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                    "endpoints-d": fnv1.ResourceSelector(
+                        api_version="modelplane.ai/v1alpha1",
+                        kind="ModelEndpoint",
+                        namespace="ml-team",
+                        match_labels=fnv1.MatchLabels(labels={"modelplane.ai/deployment": "d"}),
+                    ),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(
+                    type="RoutingReady",
+                    status=fnv1.STATUS_CONDITION_FALSE,
+                    reason="WaitingForGateway",
+                    message="Waiting for Envoy Deployment rollout",
                 )
             ],
         ),
@@ -1104,6 +1194,7 @@ COMPOSE_CASES = [
                     "cluster-ca-gw-eu": _cluster_ca(),
                     "client-certificate": _client_certificate(),
                     "route": _ai_gateway_route(
+                        ready=fnv1.READY_UNSPECIFIED,
                         section_name="https",
                         backend_refs=[{"name": "assistant-eu-self-a42e6", "weight": 1, "priority": 0}],
                     ),
@@ -1176,6 +1267,7 @@ COMPOSE_CASES = [
                     "cluster-ca-gw-eu": _cluster_ca(),
                     "client-certificate": _client_certificate(),
                     "route": _ai_gateway_route(
+                        ready=fnv1.READY_UNSPECIFIED,
                         section_name="http",
                         backend_refs=[{"name": "assistant-eu-self-a42e6", "weight": 1, "priority": 0}],
                     ),
@@ -1274,6 +1366,7 @@ COMPOSE_CASES = [
                     "backend-kimi-a": _third_party_backend(name="assistant-eu-kimi-a-bf6de", hostname="a.example.com"),
                     "aibackend-kimi-a": _third_party_ai_backend(name="assistant-eu-kimi-a-bf6de", schema="OpenAI"),
                     "route": _ai_gateway_route(
+                        ready=fnv1.READY_UNSPECIFIED,
                         section_name="http",
                         backend_refs=[{"name": "assistant-eu-kimi-a-bf6de", "weight": 1, "priority": 0}],
                     ),
@@ -1398,6 +1491,7 @@ COMPOSE_CASES = [
                     "backend-c-0": _third_party_backend(name="assistant-eu-c-0-782db", hostname="c.example.com"),
                     "aibackend-c-0": _third_party_ai_backend(name="assistant-eu-c-0-782db", schema="OpenAI"),
                     "route": _ai_gateway_route(
+                        ready=fnv1.READY_UNSPECIFIED,
                         section_name="http",
                         backend_refs=[
                             {"name": "assistant-eu-a-0-b66b8", "weight": 1, "priority": 0},
@@ -1543,6 +1637,7 @@ COMPOSE_CASES = [
                     ),
                     "aibackend-small-0": _third_party_ai_backend(name="assistant-eu-small-0-60d20", schema="OpenAI"),
                     "route": _ai_gateway_route(
+                        ready=fnv1.READY_UNSPECIFIED,
                         section_name="http",
                         backend_refs=[
                             {"name": "assistant-eu-big-0-1e944", "weight": 3, "priority": 0},
@@ -1685,6 +1780,7 @@ COMPOSE_CASES = [
                     ),
                     "aibackend-many-4": _third_party_ai_backend(name="assistant-eu-many-4-bd6f9", schema="OpenAI"),
                     "route": _ai_gateway_route(
+                        ready=fnv1.READY_UNSPECIFIED,
                         section_name="http",
                         backend_refs=[
                             {"name": "assistant-eu-many-0-e4e60", "weight": 1, "priority": 0},
@@ -1810,6 +1906,7 @@ COMPOSE_CASES = [
                     ),
                     "aibackend-small-1": _third_party_ai_backend(name="assistant-eu-small-1-cad94", schema="OpenAI"),
                     "route": _ai_gateway_route(
+                        ready=fnv1.READY_UNSPECIFIED,
                         section_name="http",
                         backend_refs=[
                             {"name": "assistant-eu-big-0-1e944", "weight": 1000000, "priority": 0},
@@ -1921,6 +2018,7 @@ COMPOSE_CASES = [
                     "backend-z": _third_party_backend(name="assistant-eu-z-e5d6f", hostname="z.example.com"),
                     "aibackend-z": _third_party_ai_backend(name="assistant-eu-z-e5d6f", schema="OpenAI"),
                     "route": _ai_gateway_route(
+                        ready=fnv1.READY_UNSPECIFIED,
                         section_name="http",
                         backend_refs=[
                             {"name": "assistant-eu-a-18a56", "weight": 1, "priority": 0},
@@ -2018,6 +2116,7 @@ COMPOSE_CASES = [
                         },
                     ),
                     "route": _ai_gateway_route(
+                        ready=fnv1.READY_UNSPECIFIED,
                         section_name="http",
                         backend_refs=[{"name": "assistant-eu-provider-348cb", "weight": 1, "priority": 0}],
                     ),
@@ -2116,6 +2215,7 @@ COMPOSE_CASES = [
                         },
                     ),
                     "route": _ai_gateway_route(
+                        ready=fnv1.READY_UNSPECIFIED,
                         section_name="http",
                         backend_refs=[{"name": "assistant-eu-provider-348cb", "weight": 1, "priority": 0}],
                     ),

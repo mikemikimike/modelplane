@@ -83,7 +83,9 @@ _AI_GATEWAY_ANCHOR_NAME = "inference-gateway-anchor"
 _AI_GATEWAY_ANCHOR_HEADER = "x-modelplane-gateway-anchor"
 _AI_GATEWAY_ANCHOR_HEADER_VALUE = "true"
 _ENVOY_GATEWAY_NAMESPACE = "envoy-gateway-system"
-_ENVOY_DEPLOYMENT_NAME = "modelplane-inference-gateway-envoy"
+# Envoy Gateway's default for modelplane-system/inference-gateway. Keep this
+# name so observing the Deployment does not replace the one already serving.
+_ENVOY_DEPLOYMENT_NAME = "modelplane-system-inference-gateway-5dbfd6c0"
 
 # The Gateway's listener names. When the gateway terminates TLS, inference binds
 # to the HTTPS listener alone (compose-model-route sets the AIGatewayRoute's
@@ -168,6 +170,7 @@ _ENVOY_DEPLOYMENT_ROLLOUT_READY_CEL = (
     "has(object.spec) && has(object.spec.replicas) && has(object.status) && "
     "has(object.status.observedGeneration) && object.status.observedGeneration >= object.metadata.generation && "
     "has(object.status.updatedReplicas) && object.status.updatedReplicas == object.spec.replicas && "
+    "has(object.status.replicas) && object.status.replicas == object.spec.replicas && "
     "has(object.status.readyReplicas) && object.status.readyReplicas == object.spec.replicas && "
     "has(object.status.availableReplicas) && object.status.availableReplicas == object.spec.replicas && "
     "has(object.status.conditions) && "
@@ -585,7 +588,6 @@ class Composer:
                             "kubernetes": {
                                 "envoyService": {"externalTrafficPolicy": "Cluster"},
                                 "envoyDeployment": {
-                                    "name": _ENVOY_DEPLOYMENT_NAME,
                                     "replicas": _PROXY_REPLICAS,
                                     "patch": {"type": "StrategicMerge", "value": _NDOTS_PATCH},
                                     "pod": {
@@ -634,6 +636,7 @@ class Composer:
             ready_when=_ENVOY_DEPLOYMENT_ROLLOUT_READY_CEL,
         )
         obj.spec.managementPolicies = ["Observe"]
+        obj.spec.watch = True
         resource.update(self.rsp.desired.resources["envoy-deployment"], obj)
 
     def compose_gateway(self) -> None:
