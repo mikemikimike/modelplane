@@ -83,9 +83,10 @@ _AI_GATEWAY_ANCHOR_NAME = "inference-gateway-anchor"
 _AI_GATEWAY_ANCHOR_HEADER = "x-modelplane-gateway-anchor"
 _AI_GATEWAY_ANCHOR_HEADER_VALUE = "true"
 _ENVOY_GATEWAY_NAMESPACE = "envoy-gateway-system"
-# Envoy Gateway's default for modelplane-system/inference-gateway. Keep this
-# name so observing the Deployment does not replace the one already serving.
-_ENVOY_DEPLOYMENT_NAME = "modelplane-system-inference-gateway-5dbfd6c0"
+# Envoy Gateway's default, `envoy-<namespace>-<gateway>-<hash>`, for
+# modelplane-system/inference-gateway. Keep this name so observing the
+# Deployment does not replace the one already serving.
+_ENVOY_DEPLOYMENT_NAME = "envoy-modelplane-system-inference-gateway-5dbfd6c0"
 
 # The Gateway's listener names. When the gateway terminates TLS, inference binds
 # to the HTTPS listener alone (compose-model-route sets the AIGatewayRoute's

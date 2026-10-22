@@ -384,7 +384,7 @@ def _envoy_deployment() -> fnv1.Resource:
                             "apiVersion": "apps/v1",
                             "kind": "Deployment",
                             "metadata": {
-                                "name": "modelplane-system-inference-gateway-5dbfd6c0",
+                                "name": "envoy-modelplane-system-inference-gateway-5dbfd6c0",
                                 "namespace": "envoy-gateway-system",
                             },
                         }
