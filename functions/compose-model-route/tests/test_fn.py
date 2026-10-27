@@ -542,7 +542,7 @@ def _to_dict(msg: message.Message) -> dict:
 COMPOSE_CASES = [
     Case(
         name="GatewayNotReady",
-        reason="A ModelRoute waits for its InferenceGateway rollout before composing routes or backends.",
+        reason="A ModelRoute composes a new route during an InferenceGateway rollout and reports it not ready.",
         req=fnv1.RunFunctionRequest(
             observed=fnv1.State(
                 composite=_model_route(
@@ -568,7 +568,20 @@ COMPOSE_CASES = [
         ),
         want=fnv1.RunFunctionResponse(
             meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
-            desired=fnv1.State(composite=_desired_model_route(address=None, total_endpoints=0, ready_endpoints=0)),
+            desired=fnv1.State(
+                composite=_desired_model_route(address="203.0.113.1", total_endpoints=1, ready_endpoints=1),
+                resources={
+                    "backend-self": _composed_endpoint_backend(),
+                    "aibackend-self": _composed_endpoint_ai_backend(),
+                    "cluster-ca-gw-eu": _cluster_ca(),
+                    "client-certificate": _client_certificate(),
+                    "route": _ai_gateway_route(
+                        ready=fnv1.READY_UNSPECIFIED,
+                        section_name="http",
+                        backend_refs=[{"name": "assistant-eu-self-a42e6", "weight": 1, "priority": 0}],
+                    ),
+                },
+            ),
             results=[fnv1.Result(severity=fnv1.SEVERITY_NORMAL, message="Waiting for Envoy Deployment rollout")],
             context=structpb.Struct(),
             requirements=fnv1.Requirements(

@@ -255,6 +255,7 @@ def _envoy_proxy() -> fnv1.Resource:
                                     "kubernetes": {
                                         "envoyService": {"externalTrafficPolicy": "Cluster"},
                                         "envoyDeployment": {
+                                            "name": "envoy-modelplane-system-inference-gateway",
                                             "replicas": 2,
                                             "patch": {
                                                 "type": "StrategicMerge",
@@ -363,19 +364,19 @@ def _envoy_deployment() -> fnv1.Resource:
                         "policy": "DeriveFromCelQuery",
                         "celQuery": (
                             "has(object.metadata) && has(object.metadata.generation) && "
-                            "has(object.spec) && has(object.spec.replicas) && has(object.status) && "
+                            "has(object.spec) && has(object.spec.replicas) && has(object.spec.template) && "
+                            "has(object.spec.template.metadata) && has(object.spec.template.metadata.annotations) && "
+                            "'aigateway.envoyproxy.io/extproc-config-hash' in object.spec.template.metadata.annotations && "
+                            "object.spec.template.metadata.annotations['aigateway.envoyproxy.io/extproc-config-hash'] != '' && "
+                            "has(object.status) && "
                             "has(object.status.observedGeneration) && "
                             "object.status.observedGeneration >= object.metadata.generation && "
                             "has(object.status.updatedReplicas) && "
                             "object.status.updatedReplicas == object.spec.replicas && "
                             "has(object.status.replicas) && "
                             "object.status.replicas == object.spec.replicas && "
-                            "has(object.status.readyReplicas) && "
-                            "object.status.readyReplicas == object.spec.replicas && "
                             "has(object.status.availableReplicas) && "
-                            "object.status.availableReplicas == object.spec.replicas && "
-                            "has(object.status.conditions) && "
-                            "object.status.conditions.exists(c, c.type == 'Available' && c.status == 'True')"
+                            "object.status.availableReplicas > 0"
                         ),
                     },
                     "managementPolicies": ["Observe"],
@@ -384,7 +385,7 @@ def _envoy_deployment() -> fnv1.Resource:
                             "apiVersion": "apps/v1",
                             "kind": "Deployment",
                             "metadata": {
-                                "name": "envoy-modelplane-system-inference-gateway-5dbfd6c0",
+                                "name": "envoy-modelplane-system-inference-gateway",
                                 "namespace": "envoy-gateway-system",
                             },
                         }
@@ -3213,6 +3214,160 @@ COMPOSE_CASES = [
                     reason="WaitingForGateway",
                     message="Waiting for the Gateway on cluster gw-eu to be programmed",
                 )
+            ],
+        ),
+    ),
+    Case(
+        name="TLSAuthGatewayReady",
+        reason=(
+            "A TLS and auth gateway becomes Ready after its policy, route, Gateway, and Envoy Deployment are ready, "
+            "without observing a Secret."
+        ),
+        req=fnv1.RunFunctionRequest(
+            observed=fnv1.State(
+                composite=_xr(name="eu", tls=True, caller_secret_labels={"team": "ml"}),
+                resources={
+                    "gateway": _observed_gateway(address="34.56.129.3", ready=True),
+                    "caller-auth": _observed_caller_auth(),
+                    "ai-gateway-anchor": _observed_ai_gateway_anchor(),
+                    "envoy-deployment": _observed_envoy_deployment(ready=True),
+                },
+            ),
+            required_resources={
+                "clusters": fnv1.Resources(items=[_cluster(provider_config_ref=True)]),
+                "gateways": fnv1.Resources(items=[_inference_gateway(name="eu", address=None)]),
+                "caller-secrets": fnv1.Resources(
+                    items=[_caller_key_secret(name="ml-team-keys", data={"alice": "a2V5"})]
+                ),
+                "tls-secret-0": fnv1.Resources(
+                    items=[
+                        fnv1.Resource(
+                            resource=resource.dict_to_struct(
+                                {
+                                    "apiVersion": "v1",
+                                    "kind": "Secret",
+                                    "metadata": {"name": "eu-tls-0", "namespace": "modelplane-system"},
+                                    "data": {"tls.crt": "Y2VydA==", "tls.key": "a2V5"},
+                                }
+                            )
+                        )
+                    ]
+                ),
+            },
+        ),
+        want=fnv1.RunFunctionResponse(
+            meta=fnv1.ResponseMeta(ttl=durationpb.Duration(seconds=60)),
+            desired=fnv1.State(
+                composite=_desired_xr(status={"address": "34.56.129.3"}, ready=fnv1.READY_UNSPECIFIED),
+                resources={
+                    "caller-secret-ml-team-keys": _caller_secret(name="callers-ml-team-keys", data={"alice": "a2V5"}),
+                    "tls-secret-eu-tls-0": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                                "kind": "Object",
+                                "metadata": {"namespace": "modelplane-system"},
+                                "spec": {
+                                    "providerConfigRef": {
+                                        "kind": "ClusterProviderConfig",
+                                        "name": "gw-eu-cluster-kubeconfig",
+                                    },
+                                    "readiness": {"policy": "SuccessfulCreate"},
+                                    "forProvider": {
+                                        "manifest": {
+                                            "apiVersion": "v1",
+                                            "kind": "Secret",
+                                            "metadata": {"name": "eu-tls-0", "namespace": "modelplane-system"},
+                                            "type": "kubernetes.io/tls",
+                                            "data": {"tls.crt": "Y2VydA==", "tls.key": "a2V5"},
+                                        }
+                                    },
+                                },
+                            }
+                        )
+                    ),
+                    "envoy-proxy": _envoy_proxy(),
+                    "envoy-deployment": _ready_envoy_deployment(),
+                    "gateway": _gateway(https=True, ready=fnv1.READY_TRUE),
+                    "client-selfsigned-issuer": _client_selfsigned_issuer(),
+                    "client-ca-certificate": _client_ca_certificate(common_name="Modelplane InferenceGateway CA eu"),
+                    "client-ca-issuer": _client_ca_issuer(),
+                    "client-ca-bundle": _client_ca_bundle(),
+                    "client-ca-configmap": _client_ca_configmap(),
+                    "caller-auth": _caller_auth(
+                        credential_refs=[{"name": "callers-ml-team-keys"}], ready=fnv1.READY_TRUE
+                    ),
+                    "failover-policy": _failover_policy(),
+                    "client-traffic-policy": _client_traffic_policy(),
+                    "healthz-filter": _healthz_filter(),
+                    "healthz-route": _healthz_route(),
+                    "ai-gateway-anchor": _ai_gateway_anchor(https=True, ready=fnv1.READY_TRUE),
+                    "healthz-auth": _healthz_auth(),
+                    "redirect-route": _redirect_route(),
+                    "redirect-auth": fnv1.Resource(
+                        resource=resource.dict_to_struct(
+                            {
+                                "apiVersion": "kubernetes.m.crossplane.io/v1alpha1",
+                                "kind": "Object",
+                                "metadata": {"namespace": "modelplane-system"},
+                                "spec": {
+                                    "providerConfigRef": {
+                                        "kind": "ClusterProviderConfig",
+                                        "name": "gw-eu-cluster-kubeconfig",
+                                    },
+                                    "readiness": {
+                                        "policy": "DeriveFromCelQuery",
+                                        "celQuery": (
+                                            "has(object.status) && has(object.status.ancestors) && "
+                                            "object.status.ancestors.exists(a, has(a.conditions) && "
+                                            "a.conditions.exists(c, c.type == 'Accepted' && c.status == 'True'))"
+                                        ),
+                                    },
+                                    "forProvider": {
+                                        "manifest": {
+                                            "apiVersion": "gateway.envoyproxy.io/v1alpha1",
+                                            "kind": "SecurityPolicy",
+                                            "metadata": {
+                                                "name": "inference-gateway-redirect-open",
+                                                "namespace": "modelplane-system",
+                                            },
+                                            "spec": {
+                                                "targetRefs": [
+                                                    {
+                                                        "group": "gateway.networking.k8s.io",
+                                                        "kind": "HTTPRoute",
+                                                        "name": "inference-gateway-redirect",
+                                                    }
+                                                ],
+                                                "authorization": {"defaultAction": "Allow"},
+                                            },
+                                        }
+                                    },
+                                },
+                            }
+                        )
+                    ),
+                },
+            ),
+            results=[],
+            context=structpb.Struct(),
+            requirements=fnv1.Requirements(
+                resources={
+                    "gateways": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceGateway"),
+                    "clusters": fnv1.ResourceSelector(api_version="modelplane.ai/v1alpha1", kind="InferenceCluster"),
+                    "caller-secrets": fnv1.ResourceSelector(
+                        api_version="v1",
+                        kind="Secret",
+                        namespace="modelplane-system",
+                        match_labels=fnv1.MatchLabels(labels={"team": "ml"}),
+                    ),
+                    "tls-secret-0": fnv1.ResourceSelector(
+                        api_version="v1", kind="Secret", namespace="modelplane-system", match_name="eu-tls-0"
+                    ),
+                }
+            ),
+            conditions=[
+                fnv1.Condition(type="GatewayReady", status=fnv1.STATUS_CONDITION_TRUE, reason="GatewayProgrammed")
             ],
         ),
     ),

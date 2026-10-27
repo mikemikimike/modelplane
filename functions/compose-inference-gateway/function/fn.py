@@ -83,10 +83,9 @@ _AI_GATEWAY_ANCHOR_NAME = "inference-gateway-anchor"
 _AI_GATEWAY_ANCHOR_HEADER = "x-modelplane-gateway-anchor"
 _AI_GATEWAY_ANCHOR_HEADER_VALUE = "true"
 _ENVOY_GATEWAY_NAMESPACE = "envoy-gateway-system"
-# Envoy Gateway's default, `envoy-<namespace>-<gateway>-<hash>`, for
-# modelplane-system/inference-gateway. Keep this name so observing the
-# Deployment does not replace the one already serving.
-_ENVOY_DEPLOYMENT_NAME = "envoy-modelplane-system-inference-gateway-5dbfd6c0"
+# Pin the name so readiness can observe the Deployment without depending on
+# Envoy Gateway's generated hash.
+_ENVOY_DEPLOYMENT_NAME = "envoy-modelplane-system-inference-gateway"
 
 # The Gateway's listener names. When the gateway terminates TLS, inference binds
 # to the HTTPS listener alone (compose-model-route sets the AIGatewayRoute's
@@ -166,16 +165,19 @@ _AI_GATEWAY_ROUTE_ACCEPTED_CEL = (
     "object.status.conditions.exists(c, c.type == 'Accepted' && c.status == 'True')"
 )
 
+# The AI Gateway stamps the pod template when it has processed an active route.
+# Once that rollout has no old pods, one available replica can serve traffic.
 _ENVOY_DEPLOYMENT_ROLLOUT_READY_CEL = (
     "has(object.metadata) && has(object.metadata.generation) && "
-    "has(object.spec) && has(object.spec.replicas) && has(object.status) && "
+    "has(object.spec) && has(object.spec.replicas) && has(object.spec.template) && "
+    "has(object.spec.template.metadata) && has(object.spec.template.metadata.annotations) && "
+    "'aigateway.envoyproxy.io/extproc-config-hash' in object.spec.template.metadata.annotations && "
+    "object.spec.template.metadata.annotations['aigateway.envoyproxy.io/extproc-config-hash'] != '' && "
+    "has(object.status) && "
     "has(object.status.observedGeneration) && object.status.observedGeneration >= object.metadata.generation && "
     "has(object.status.updatedReplicas) && object.status.updatedReplicas == object.spec.replicas && "
     "has(object.status.replicas) && object.status.replicas == object.spec.replicas && "
-    "has(object.status.readyReplicas) && object.status.readyReplicas == object.spec.replicas && "
-    "has(object.status.availableReplicas) && object.status.availableReplicas == object.spec.replicas && "
-    "has(object.status.conditions) && "
-    "object.status.conditions.exists(c, c.type == 'Available' && c.status == 'True')"
+    "has(object.status.availableReplicas) && object.status.availableReplicas > 0"
 )
 
 # Kubernetes injects ndots:5 into every pod, which tells the resolver to try each
@@ -589,6 +591,7 @@ class Composer:
                             "kubernetes": {
                                 "envoyService": {"externalTrafficPolicy": "Cluster"},
                                 "envoyDeployment": {
+                                    "name": _ENVOY_DEPLOYMENT_NAME,
                                     "replicas": _PROXY_REPLICAS,
                                     "patch": {"type": "StrategicMerge", "value": _NDOTS_PATCH},
                                     "pod": {
