@@ -371,10 +371,8 @@ def _envoy_deployment() -> fnv1.Resource:
                             "has(object.status) && "
                             "has(object.status.observedGeneration) && "
                             "object.status.observedGeneration >= object.metadata.generation && "
-                            "has(object.status.updatedReplicas) && "
-                            "object.status.updatedReplicas == object.spec.replicas && "
-                            "has(object.status.replicas) && "
-                            "object.status.replicas == object.spec.replicas && "
+                            "has(object.status.updatedReplicas) && has(object.status.replicas) && "
+                            "object.status.updatedReplicas == object.status.replicas && "
                             "has(object.status.availableReplicas) && "
                             "object.status.availableReplicas > 0"
                         ),

@@ -166,7 +166,7 @@ _AI_GATEWAY_ROUTE_ACCEPTED_CEL = (
 )
 
 # The AI Gateway stamps the pod template when it has processed an active route.
-# Once that rollout has no old pods, one available replica can serve traffic.
+# Require every existing pod to be updated, but allow a replica to be unavailable.
 _ENVOY_DEPLOYMENT_ROLLOUT_READY_CEL = (
     "has(object.metadata) && has(object.metadata.generation) && "
     "has(object.spec) && has(object.spec.replicas) && has(object.spec.template) && "
@@ -175,8 +175,8 @@ _ENVOY_DEPLOYMENT_ROLLOUT_READY_CEL = (
     "object.spec.template.metadata.annotations['aigateway.envoyproxy.io/extproc-config-hash'] != '' && "
     "has(object.status) && "
     "has(object.status.observedGeneration) && object.status.observedGeneration >= object.metadata.generation && "
-    "has(object.status.updatedReplicas) && object.status.updatedReplicas == object.spec.replicas && "
-    "has(object.status.replicas) && object.status.replicas == object.spec.replicas && "
+    "has(object.status.updatedReplicas) && has(object.status.replicas) && "
+    "object.status.updatedReplicas == object.status.replicas && "
     "has(object.status.availableReplicas) && object.status.availableReplicas > 0"
 )
 
