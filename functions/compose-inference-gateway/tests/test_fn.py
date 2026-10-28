@@ -3216,9 +3216,9 @@ COMPOSE_CASES = [
         ),
     ),
     Case(
-        name="TLSAuthGatewayReady",
+        name="TLSAndAuthGatewayReady",
         reason=(
-            "A TLS and auth gateway becomes Ready after its policy, route, Gateway, and Envoy Deployment are ready, "
+            "A TLS and auth gateway becomes GatewayReady=True after its policy, route, Gateway, and Envoy Deployment are ready, "
             "without observing a Secret."
         ),
         req=fnv1.RunFunctionRequest(
