@@ -3216,7 +3216,7 @@ COMPOSE_CASES = [
         ),
     ),
     Case(
-        name="TLSAndAuthGatewayReady",
+        name="TLSAuthReady",
         reason=(
             "A TLS and auth gateway becomes GatewayReady=True after its policy, route, Gateway, and Envoy Deployment are ready, "
             "without observing a Secret."
